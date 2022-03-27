@@ -1,3 +1,5 @@
+import re
+
 import scrapy
 
 
@@ -5,6 +7,17 @@ class UkPostcodeSpider(scrapy.Spider):
     name = "uk_postcode"
     start_urls = ["https://www.doogal.co.uk/AdministrativeAreas.php/"]
     home_url = "https://www.doogal.co.uk/"
+
+    postcode_page_number = 2
+
+    def extract_district_code(self, admin_url: str) -> str:
+        pattern1 = r"(?<==).*$"
+        pattern2 = r"(?<==)(.*?)(?=&)"
+
+        if "page" in admin_url:
+            return re.search(pattern2, admin_url).group()
+
+        return re.search(pattern1, admin_url).group()
 
     def parse(self, response):
         rows = response.xpath("//tr")
@@ -28,7 +41,8 @@ class UkPostcodeSpider(scrapy.Spider):
                         url,
                         callback=self.parse_area,
                         cb_kwargs={
-                            "area": area
+                            "area": area,
+                            "district_code": self.extract_district_code(admin_url)
                         }
                     )
 
@@ -50,11 +64,7 @@ class UkPostcodeSpider(scrapy.Spider):
                 except IndexError:
                     pass
 
-    def parse_area(self, response, area):
-        district_code = ""
-        district_page_number = 2
-        area_start_url = f"https://www.doogal.co.uk/AdministrativeAreas.php?district={district_page_number}&page=1"
-
+    def parse_area(self, response, area, district_code):
         rows = response.xpath("//tr")
 
         for row in rows:
@@ -78,7 +88,14 @@ class UkPostcodeSpider(scrapy.Spider):
             except TypeError:
                 continue
 
-        next_page = f"https://www.doogal.co.uk/AdministrativeAreas.php?district={district_code}&page={district_page_number}"
+        try:
+            next_page = f"https://www.doogal.co.uk/AdministrativeAreas.php?district={district_code}&page={self.postcode_page_number}"
+            self.postcode_page_number += 1
+
+            yield response.follow(next_page, callback=self.parse_area)
+
+        except Exception:
+            pass
 
     def parse_postcode(self, response, area, postcode, ward):
         try:
@@ -97,4 +114,4 @@ class UkPostcodeSpider(scrapy.Spider):
 
 
 # TODO: Add pagination in extracting postcodes
-# TODO: Extract district number to enable pagination
+# TODO: Extract district code to enable pagination
