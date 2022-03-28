@@ -85,6 +85,7 @@ class UkPostcodeSpider(scrapy.Spider):
                 url = self.home_url + postcode_url
                 ward = row.xpath("./td/text()").extract()[0]
 
+                self.logger.info(f"Checking postcode availability: {postcode}")
                 yield response.follow(
                     url,
                     callback=self.parse_postcode,
@@ -129,7 +130,3 @@ class UkPostcodeSpider(scrapy.Spider):
 
         except Exception:
             pass
-
-
-# TODO: Add pagination in extracting postcodes
-# TODO: Extract district code to enable pagination
