@@ -10,17 +10,17 @@ class UkPostcodeSpider(scrapy.Spider):
 
     postcode_page_number = 2
 
-    def extract_district_code(self, admin_url: str) -> str:
+    def extract_district_code(self, url: str) -> str:
         pattern1 = r"(?<==).*$"
         pattern2 = r"(?<==)(.*?)(?=&)"
 
-        if "page" in admin_url:
-            return re.search(pattern2, admin_url).group()
+        if "page" in url:
+            return re.search(pattern2, url).group()
 
-        return re.search(pattern1, admin_url).group()
+        return re.search(pattern1, url).group()
 
     def parse(self, response):
-        rows = response.xpath("//tr")
+        rows = response.xpath("//tr")[1:]
 
         for row in rows:
             data_url = row.xpath("./td/a/@href").extract()
@@ -37,14 +37,19 @@ class UkPostcodeSpider(scrapy.Spider):
                 areas = admin_area + county_area
 
                 for url, area in zip(urls, areas):
-                    yield response.follow(
-                        url,
-                        callback=self.parse_area,
-                        cb_kwargs={
-                            "area": area,
-                            "district_code": self.extract_district_code(admin_url)
-                        }
-                    )
+
+                    try:
+                        yield response.follow(
+                            url,
+                            callback=self.parse_area,
+                            cb_kwargs={
+                                "area": area,
+                                "district_code": self.extract_district_code(url)
+                            }
+                        )
+
+                    except AttributeError:
+                        continue
 
             except ValueError:
                 try:
@@ -53,13 +58,18 @@ class UkPostcodeSpider(scrapy.Spider):
 
                     url = self.home_url + admin_url
 
-                    yield response.follow(
-                        url,
-                        callback=self.parse_area,
-                        cb_kwargs={
-                            "area": admin_area
-                        }
-                    )
+                    try:
+                        yield response.follow(
+                            url,
+                            callback=self.parse_area,
+                            cb_kwargs={
+                                "area": admin_area,
+                                "district_code": self.extract_district_code(url)
+                            }
+                        )
+
+                    except AttributeError:
+                        continue
 
                 except IndexError:
                     pass
@@ -91,8 +101,16 @@ class UkPostcodeSpider(scrapy.Spider):
         try:
             next_page = f"https://www.doogal.co.uk/AdministrativeAreas.php?district={district_code}&page={self.postcode_page_number}"
             self.postcode_page_number += 1
+            self.logger.info(f"Following page: {self.postcode_page_number}")
 
-            yield response.follow(next_page, callback=self.parse_area)
+            yield response.follow(
+                next_page,
+                callback=self.parse_area,
+                cb_kwargs={
+                    "area": area,
+                    "district_code": district_code,
+                }
+            )
 
         except Exception:
             pass
